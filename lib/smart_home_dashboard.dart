@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:provider/provider.dart';
-import 'theme_provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'settings_screen.dart';
 
 class SmartHomeDashboard extends StatefulWidget {
-  const SmartHomeDashboard({Key? key}) : super(key: key);
+  const SmartHomeDashboard({super.key});
 
   @override
   State<SmartHomeDashboard> createState() => _SmartHomeDashboardState();
@@ -19,11 +17,16 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
   String? errorMsg;
   Map<String, dynamic>? latestTemperature;
   Map<String, dynamic>? latestSmoke;
+  bool? isLightOn;
+  bool isLightLoading = false;
+  String? motionStatus;
 
   @override
   void initState() {
     super.initState();
     fetchLatestData();
+    fetchLightStatus();
+    fetchLatestMotionLog();
   }
 
   Future<void> fetchLatestData() async {
@@ -49,8 +52,8 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
       print('smoke_data response:');
       print(smokeResponse);
       setState(() {
-        latestTemperature = (tempResponse is List && tempResponse.isNotEmpty) ? tempResponse.first : null;
-        latestSmoke = (smokeResponse is List && smokeResponse.isNotEmpty) ? smokeResponse.first : null;
+        latestTemperature = (tempResponse.isNotEmpty) ? tempResponse.first : null;
+        latestSmoke = (smokeResponse.isNotEmpty) ? smokeResponse.first : null;
         if (latestTemperature == null && latestSmoke == null) {
           errorMsg = 'No data found in Supabase tables.';
         }
@@ -66,6 +69,42 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
         isLoading = false;
       });
     }
+  }
+
+  Future<void> fetchLightStatus() async {
+    setState(() => isLightLoading = true);
+    final response = await Supabase.instance.client
+        .from('control_switch')
+        .select()
+        .order('created_at', ascending: false)
+        .limit(1);
+    setState(() {
+      isLightOn = (response.isNotEmpty) ? response.first['is_on'] == true : null;
+      isLightLoading = false;
+    });
+  }
+
+  Future<void> toggleLight(bool value) async {
+    setState(() => isLightLoading = true);
+    await Supabase.instance.client
+        .from('control_switch')
+        .update({'is_on': value, 'created_at': DateTime.now().toIso8601String()})
+        .eq('id', 1);
+    setState(() {
+      isLightOn = value;
+      isLightLoading = false;
+    });
+  }
+
+  Future<void> fetchLatestMotionLog() async {
+    final response = await Supabase.instance.client
+        .from('motion_logs')
+        .select()
+        .order('created_at', ascending: false)
+        .limit(1);
+    setState(() {
+      motionStatus = (response.isNotEmpty) ? response.first['status'] : null;
+    });
   }
 
   List<FlSpot> _prepareTemperatureChartData(List<Map<String, dynamic>> tempHistory) {
@@ -213,13 +252,41 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
           valueColor: alert ? Colors.red : Colors.green,
         ),
         const SizedBox(height: 24),
+        // --- MOTION LIGHT TOGGLE ---
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.lightbulb),
+            title: const Text('Motion Light'),
+            subtitle: isLightLoading
+                ? const Text('Loading...')
+                : Text(isLightOn == true ? 'ON' : 'OFF'),
+            trailing: isLightLoading
+                ? const CircularProgressIndicator()
+                : Switch(
+                    value: isLightOn ?? false,
+                    onChanged: (val) async {
+                      await toggleLight(val);
+                    },
+                  ),
+          ),
+        ),
+        // --- MOTION LOG STATUS ---
+        if (motionStatus != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.directions_run),
+              title: const Text('Latest Motion'),
+              subtitle: Text(motionStatus!),
+            ),
+          ),
+        const SizedBox(height: 24),
         Text('Latest Data', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Card(
           color: Theme.of(context).cardColor,
           child: ListTile(
             leading: Icon(Icons.thermostat, color: Theme.of(context).iconTheme.color),
-            title: Text('Temperature: ' + (temperature != null ? '${temperature.toStringAsFixed(1)}°C' : 'N/A'),
+            title: Text('Temperature: ${temperature != null ? '${temperature.toStringAsFixed(1)}°C' : 'N/A'}',
                 style: Theme.of(context).textTheme.bodyLarge),
             subtitle: Text('Timeline: ${formatDateTime(latestTemperature?['created_at'])}',
                 style: Theme.of(context).textTheme.bodySmall),
@@ -229,7 +296,7 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
           color: alert ? Theme.of(context).colorScheme.errorContainer : Theme.of(context).cardColor,
           child: ListTile(
             leading: Icon(Icons.smoke_free, color: alert ? Theme.of(context).colorScheme.error : Theme.of(context).iconTheme.color),
-            title: Text('Smoke PPM: ' + (ppm != null ? '$ppm' : 'N/A'),
+            title: Text('Smoke PPM: ${ppm != null ? '$ppm' : 'N/A'}',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: alert ? Theme.of(context).colorScheme.onErrorContainer : null,
                 )),
@@ -479,6 +546,45 @@ class _SmartHomeDashboardState extends State<SmartHomeDashboard> {
       },
     );
   }
+
+  @override
+  void didUpdateWidget(covariant SmartHomeDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _checkSmokeAlert();
+  }
+
+  void _checkSmokeAlert() {
+    if (latestSmoke?['alert'] == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('⚠️ Smoke detected!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      });
+    }
+  }
+
+  void _showSmokeAlertDialog() {
+    if (latestSmoke?['alert'] == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Smoke Detected!'),
+            content: const Text('Warning: Smoke has been detected in your home.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      });
+    }
+  }
 }
 
 class _SensorCard extends StatelessWidget {
@@ -492,8 +598,7 @@ class _SensorCard extends StatelessWidget {
     required this.label,
     required this.value,
     this.valueColor,
-    Key? key,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -535,4 +640,7 @@ String formatDateTime(String? isoString) {
   } catch (e) {
     return isoString;
   }
-} 
+
+  
+}
+
