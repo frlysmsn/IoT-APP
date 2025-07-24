@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "189068450269",
+    "project_id": "smart-home-18a07",
+    "storage_bucket": "smart-home-18a07.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:189068450269:android:7c13b621e9e7ee3317be34",
+        "android_client_info": {
+          "package_name": "com.sherwin.iotApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtg7efp0TVcdrb-5ll5PNrskRURdcOw5g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

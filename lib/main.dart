@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'notification_service.dart';
 import 'theme_provider.dart';
 import 'settings_provider.dart';
 import 'smart_home_dashboard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+final NotificationService notificationService = NotificationService();
 
 void main() async {
+  debugPrint('main started');
   WidgetsFlutterBinding.ensureInitialized();
+  await notificationService.init();
   await Supabase.initialize(
     url: 'https://fcdtbmulwjzlufqqxsie.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjZHRibXVsd2p6bHVmcXF4c2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1MjI3MDgsImV4cCI6MjA2NTA5ODcwOH0.RYcTV_gv9xg8aFAgJqLfKaaA2GHdXLPctpe2K1_CJAY',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjZHRibXVsd2p6bHVmcXF4c2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1MjI3MDgsImV4cCI6MjA2NTA5ODcwOH0.RYcTV_gv9xg8aFAgJqLfKaaA2GHdXLPctpe2K1_CJAY',
   );
+  await NotificationService().init();
+  await _requestNotificationPermission();
   runApp(
     MultiProvider(
       providers: [
@@ -20,6 +29,12 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+Future<void> _requestNotificationPermission() async {
+  if (await Permission.notification.isDenied) {
+    await Permission.notification.request();
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -35,7 +50,10 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.light,
       ),
       darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+        ),
         brightness: Brightness.dark,
       ),
       themeMode: themeProvider.themeMode,
